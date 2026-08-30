@@ -108,15 +108,15 @@ export default function LoansPage() {
   const getLoanTypeBadge = (type: string) => {
     switch (type) {
       case "daily":
-        return <Badge variant="primary">Daily</Badge>;
+        return <Badge variant="default">Daily</Badge>;
       case "weekly":
-        return <Badge variant="info">Weekly</Badge>;
+        return <Badge variant="purple">Weekly</Badge>;
       case "monthly_emi":
         return <Badge variant="purple">Monthly EMI</Badge>;
       case "monthly_interest":
         return <Badge variant="purple">Monthly Interest</Badge>;
       case "gold":
-        return <Badge variant="gold">Gold Loan</Badge>;
+        return <Badge variant="warning">Gold Loan</Badge>;
       default:
         return <Badge variant="outline">{type}</Badge>;
     }

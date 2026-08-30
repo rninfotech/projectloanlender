@@ -100,7 +100,7 @@ export default function PaymentsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Badge variant="primary" className="text-xs px-3 py-1 font-mono">
+          <Badge variant="default" className="text-xs px-3 py-1 font-mono">
             Total Collections: {formatCurrency(totalAmount)}
           </Badge>
         </div>

@@ -175,7 +175,7 @@ export default function CollectionsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Badge variant="primary" className="text-xs px-3 py-1 font-mono">
+          <Badge variant="default" className="text-xs px-3 py-1 font-mono">
             🗓️ {new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
           </Badge>
         </div>

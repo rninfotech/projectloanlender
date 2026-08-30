@@ -81,11 +81,11 @@ export default function StaffPage() {
   const getRoleBadge = (role: StaffMember["role"]) => {
     switch (role) {
       case "owner":
-        return <Badge variant="primary">Owner (Super Admin)</Badge>;
+        return <Badge variant="default">Owner (Super Admin)</Badge>;
       case "admin":
         return <Badge variant="purple">Admin</Badge>;
       case "manager":
-        return <Badge variant="info">Branch Manager</Badge>;
+        return <Badge variant="secondary">Branch Manager</Badge>;
       case "staff":
         return <Badge variant="success">Collection Agent</Badge>;
       case "viewer":

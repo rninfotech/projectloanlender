@@ -114,13 +114,11 @@ export default function NewLoanPage() {
         interestMethod,
         numInstallments: n,
         tenureMonths: tm,
-        processingFee: parseFloat(processingFee) || 0,
-        disbursedDate: new Date(disbursedDate),
       });
     } catch {
       return null;
     }
-  }, [principalAmount, interestRate, loanType, interestMethod, numInstallments, tenureMonths, processingFee, disbursedDate]);
+  }, [principalAmount, interestRate, loanType, interestMethod, numInstallments, tenureMonths]);
 
   const filteredBorrowers = borrowers.filter(
     (b) =>
