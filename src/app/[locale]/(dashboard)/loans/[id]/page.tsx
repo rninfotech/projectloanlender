@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -22,14 +22,12 @@ import {
   Clock,
   MessageSquare,
   CreditCard,
-  Printer,
   Shield,
   MapPin,
   Phone,
-  FileSpreadsheet,
-  Check,
 } from "lucide-react";
 import { formatCurrency, formatCurrencyShort, formatDate, getWhatsAppShareUrl } from "@/lib/utils";
+import { fetchAllLoans, LoanData } from "@/lib/services/loanService";
 
 interface InstallmentRow {
   installmentNo: number;
@@ -48,65 +46,73 @@ export default function LoanDetailPage() {
   const locale = (params.locale as string) || "en";
   const loanId = params.id as string;
 
-  const [settleModalOpen, setSettleModalOpen] = useState(false);
-  const [settled, setSettled] = useState(false);
+  const [loan, setLoan] = useState<LoanData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Sample Loan Data
-  const loan = {
-    id: loanId,
-    loanNumber: "LN-2026-0001",
-    customerName: "K. Annadurai",
-    customerPhone: "+91 98401 55678",
-    customerArea: "Main Market Route",
-    loanType: "Daily Collection",
-    interestMethod: "Flat Rate",
-    principal: 20000,
-    interestRate: 10,
-    totalInterest: 2000,
-    totalPayable: 22000,
-    totalPaid: 7480,
-    outstanding: 14520,
-    installmentAmount: 220,
-    numInstallments: 100,
-    paidInstallments: 34,
-    disbursedDate: "2026-01-15",
-    maturityDate: "2026-04-25",
-    assignedStaff: "Karthik Rajan",
-    collateral: "Personal Guarantee & Shop Lease Agreement",
-    status: settled ? "closed" : "active",
-  };
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const list = await fetchAllLoans();
+        const found = list.find((l) => l.id === loanId || l.loanNumber === loanId);
+        setLoan(found || null);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [loanId]);
 
-  // Generate 100 Installments for the schedule
-  const installments: InstallmentRow[] = Array.from({ length: 20 }).map((_, i) => {
+  if (loading) {
+    return (
+      <div className="p-12 text-center">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
+        <p className="text-sm text-muted-foreground">Loading loan details...</p>
+      </div>
+    );
+  }
+
+  if (!loan) {
+    return (
+      <div className="max-w-md mx-auto p-10 text-center border border-dashed border-border rounded-2xl bg-muted/20">
+        <HandCoins className="w-12 h-12 text-muted-foreground opacity-40 mx-auto mb-3" />
+        <h2 className="font-bold text-lg text-foreground">Loan Account Not Found</h2>
+        <p className="text-xs text-muted-foreground mt-1 mb-5">
+          The requested loan account does not exist or has been removed.
+        </p>
+        <Link href={`/${locale}/loans`}>
+          <Button variant="outline" className="gap-2">
+            <ArrowLeft className="w-4 h-4" /> Back to Loans
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const numInst = loan.totalInstallments || 1;
+  const paidInst = loan.paidInstallments || 0;
+  const emi = loan.installmentAmount || 0;
+
+  const installments: InstallmentRow[] = Array.from({ length: Math.min(numInst, 50) }).map((_, i) => {
     const num = i + 1;
-    const isPaid = num <= 34;
-    const isOverdue = num === 35;
+    const isPaid = num <= paidInst;
+    const isOverdue = !isPaid && loan.status === "overdue" && num === paidInst + 1;
     return {
       installmentNo: num,
-      dueDate: `2026-02-${String(num).padStart(2, "0")}`,
-      principalDue: 200,
-      interestDue: 20,
-      totalDue: 220,
-      paidAmount: isPaid ? 220 : 0,
+      dueDate: loan.maturityDate,
+      principalDue: Math.round(loan.principalAmount / numInst),
+      interestDue: Math.round(loan.totalInterest / numInst),
+      totalDue: emi,
+      paidAmount: isPaid ? emi : 0,
       status: isPaid ? "paid" : isOverdue ? "overdue" : "pending",
-      paidDate: isPaid ? `2026-02-${String(num).padStart(2, "0")}` : undefined,
     };
   });
 
-  const getInstBadge = (status: InstallmentRow["status"]) => {
-    switch (status) {
-      case "paid":
-        return <Badge variant="success" className="text-[10px]">Paid</Badge>;
-      case "overdue":
-        return <Badge variant="destructive" className="text-[10px]">Overdue</Badge>;
-      case "pending":
-        return <Badge variant="outline" className="text-[10px]">Pending</Badge>;
-    }
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link href={`/${locale}/loans`}>
@@ -116,161 +122,126 @@ export default function LoanDetailPage() {
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight text-foreground font-mono">
-                {loan.loanNumber}
-              </h1>
-              <Badge variant={loan.status === "active" ? "success" : "secondary"}>
-                {loan.status === "active" ? "Active Loan" : "Settled / Closed"}
+              <h1 className="text-2xl font-bold tracking-tight text-foreground font-mono">{loan.loanNumber}</h1>
+              <Badge variant={loan.status === "active" ? "success" : loan.status === "overdue" ? "destructive" : "secondary"}>
+                {loan.status}
               </Badge>
-              <Badge variant="default" className="text-xs">{loan.loanType}</Badge>
+              <Badge variant="outline">{loan.loanType.toUpperCase()}</Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Borrower: <strong className="text-foreground">{loan.customerName}</strong> (📞 {loan.customerPhone}) • 📍 {loan.customerArea}
+              Borrower: <strong className="text-foreground">{loan.customerName}</strong> (📞 {loan.phone})
             </p>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <a
             href={getWhatsAppShareUrl(
-              loan.customerPhone,
-              `வணக்கம் ${loan.customerName}, கடன் எண்: ${loan.loanNumber}.\nஅசல்: ₹${loan.principal}\nசெலுத்தியது: ₹${loan.totalPaid} (${loan.paidInstallments}/${loan.numInstallments} தவணைகள்)\nநிலுவை: ₹${loan.outstanding}.\n- ஸ்ரீ கிருஷ்ணா பைனான்ஸ்.`
+              loan.phone,
+              `Hello ${loan.customerName}, your loan account ${loan.loanNumber} has a current outstanding balance of ₹${loan.remainingBalance}. Installment: ₹${loan.installmentAmount}.`
             )}
             target="_blank"
             rel="noopener noreferrer"
           >
-            <Button variant="outline" size="sm" className="gap-2 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10">
-              <MessageSquare className="w-4 h-4" />
-              WhatsApp Statement
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+              <MessageSquare className="w-3.5 h-3.5" /> WhatsApp Reminder
             </Button>
           </a>
-
-          <Link href={`/${locale}/collections`}>
-            <Button size="sm" className="gap-2">
-              <CreditCard className="w-4 h-4" />
-              Collect Payment
-            </Button>
-          </Link>
         </div>
       </div>
 
-      {/* Financial Overview Card */}
+      {/* 4 Financial Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <span className="text-xs text-muted-foreground font-medium">Disbursed Principal</span>
-          <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-            {formatCurrency(loan.principal)}
-          </p>
-          <span className="text-[11px] text-muted-foreground">+ ₹{loan.totalInterest} Interest ({loan.interestRate}%)</span>
+          <span className="text-xs font-semibold text-muted-foreground">Principal Disbursed</span>
+          <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">{formatCurrency(loan.principalAmount)}</p>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <span className="text-xs text-muted-foreground font-medium">Total Repaid</span>
-          <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-            {formatCurrency(loan.totalPaid)}
-          </p>
-          <span className="text-[11px] text-muted-foreground">{loan.paidInstallments} of {loan.numInstallments} paid</span>
+          <span className="text-xs font-semibold text-muted-foreground">Total Repayable</span>
+          <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">{formatCurrency(loan.totalPayable)}</p>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <span className="text-xs text-muted-foreground font-medium">Balance Remaining</span>
-          <p className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
-            {formatCurrency(loan.outstanding)}
-          </p>
-          <span className="text-[11px] text-muted-foreground">₹{loan.installmentAmount} / day</span>
+          <span className="text-xs font-semibold text-muted-foreground">Total Recovered</span>
+          <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(loan.totalPaid)}</p>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <span className="text-xs text-muted-foreground font-medium">Officer Assigned</span>
-          <p className="text-sm font-bold text-foreground mt-1">
-            {loan.assignedStaff}
-          </p>
-          <span className="text-[11px] text-muted-foreground">Maturity: {formatDate(loan.maturityDate)}</span>
+          <span className="text-xs font-semibold text-muted-foreground">Remaining Balance</span>
+          <p className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">{formatCurrency(loan.remainingBalance)}</p>
         </div>
       </div>
 
-      {/* Repayment Progress Meter */}
-      <div className="p-5 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm space-y-2">
-        <div className="flex justify-between text-xs font-semibold">
-          <span className="text-muted-foreground">
-            Repayment Status: <strong className="text-foreground">{Math.round((loan.totalPaid / loan.totalPayable) * 100)}% Completed</strong>
-          </span>
-          <span className="text-primary font-bold">
-            {loan.paidInstallments} / {loan.numInstallments} Installments Cleared
-          </span>
+      {/* Schedule & Collateral Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-4">
+          <Card className="border-border/80 bg-card/80 backdrop-blur-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" /> Installment Repayment Schedule
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/50 border-b border-border/80 text-muted-foreground font-semibold">
+                    <tr>
+                      <th className="p-3">#</th>
+                      <th className="p-3">Installment Due</th>
+                      <th className="p-3">Amount Paid</th>
+                      <th className="p-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {installments.map((inst) => (
+                      <tr key={inst.installmentNo} className="hover:bg-muted/30">
+                        <td className="p-3 font-bold text-foreground">#{inst.installmentNo}</td>
+                        <td className="p-3 font-semibold text-foreground">{formatCurrency(inst.totalDue)}</td>
+                        <td className="p-3 text-muted-foreground">{formatCurrency(inst.paidAmount)}</td>
+                        <td className="p-3">
+                          <Badge variant={inst.status === "paid" ? "success" : inst.status === "overdue" ? "destructive" : "outline"} className="text-[10px]">
+                            {inst.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-        <div className="w-full h-3 rounded-full bg-muted overflow-hidden">
-          <div
-            className="h-full bg-primary rounded-full transition-all duration-500"
-            style={{ width: `${(loan.totalPaid / loan.totalPayable) * 100}%` }}
-          />
-        </div>
-      </div>
 
-      {/* Installment Schedule Table */}
-      <Card className="border-border/80 bg-card/80 backdrop-blur-sm">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4 text-primary" />
-              Complete Installment Schedule
-            </CardTitle>
-            <CardDescription>
-              Due date calendar, breakdown, and collection verification
-            </CardDescription>
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setSettled(true); }}
-            className="text-xs gap-1.5"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-success" />
-            Early Settle Loan
-          </Button>
-        </CardHeader>
-
-        <CardContent>
-          <div className="border border-border/80 rounded-2xl overflow-hidden divide-y divide-border/60">
-            {/* Table Header */}
-            <div className="grid grid-cols-5 p-3 bg-muted/40 text-xs font-bold text-muted-foreground">
-              <span>#</span>
-              <span>Due Date</span>
-              <span>Amount</span>
-              <span>Paid</span>
-              <span className="text-right">Status</span>
-            </div>
-
-            {/* Installments Rows */}
-            <div className="max-h-96 overflow-y-auto divide-y divide-border/60">
-              {installments.map((inst) => (
-                <div
-                  key={inst.installmentNo}
-                  className="grid grid-cols-5 p-3 text-xs items-center hover:bg-muted/30 transition-colors"
-                >
-                  <span className="font-bold text-foreground">
-                    #{inst.installmentNo}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {formatDate(inst.dueDate)}
-                  </span>
-                  <span className="font-semibold text-foreground">
-                    {formatCurrency(inst.totalDue)}
-                  </span>
-                  <span className={inst.paidAmount > 0 ? "font-bold text-emerald-600" : "text-muted-foreground"}>
-                    {inst.paidAmount > 0 ? formatCurrency(inst.paidAmount) : "—"}
-                  </span>
-                  <div className="text-right">
-                    {getInstBadge(inst.status)}
-                  </div>
+        {/* Security & Assignment Side Card */}
+        <div className="space-y-4">
+          <Card className="border-border/80 bg-card/80 backdrop-blur-sm p-5 space-y-3">
+            <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+              <Shield className="w-4 h-4 text-primary" /> Collateral & Officer Info
+            </h3>
+            <div className="space-y-2 text-xs divide-y divide-border/60">
+              <div className="pt-2">
+                <span className="text-muted-foreground">Assigned Officer:</span>
+                <p className="font-semibold text-foreground mt-0.5">{loan.assignedStaff || "Admin (Self)"}</p>
+              </div>
+              <div className="pt-2">
+                <span className="text-muted-foreground">Collateral Type:</span>
+                <p className="font-semibold text-foreground mt-0.5">{loan.collateralType || "Unsecured / Personal Guarantee"}</p>
+              </div>
+              {loan.collateralDetails && (
+                <div className="pt-2">
+                  <span className="text-muted-foreground">Collateral Notes:</span>
+                  <p className="font-semibold text-foreground mt-0.5">{loan.collateralDetails}</p>
                 </div>
-              ))}
+              )}
+              <div className="pt-2">
+                <span className="text-muted-foreground">Disbursement Date:</span>
+                <p className="font-semibold text-foreground mt-0.5">{formatDate(loan.disbursedDate)}</p>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -32,8 +32,10 @@ import {
   TrendingUp,
   X,
   Send,
+  Plus,
 } from "lucide-react";
 import { formatCurrency, formatCurrencyShort, formatDate, getWhatsAppShareUrl } from "@/lib/utils";
+import { fetchAllLoans, LoanData } from "@/lib/services/loanService";
 
 interface DueItem {
   id: string;
@@ -54,96 +56,13 @@ interface DueItem {
   receiptNumber?: string;
 }
 
-const INITIAL_DUES: DueItem[] = [
-  {
-    id: "due-1",
-    loanId: "ln-1",
-    loanNumber: "LN-2026-0001",
-    customerName: "K. Annadurai",
-    customerPhone: "+91 98401 55678",
-    customerArea: "Main Market Route",
-    installmentNo: 35,
-    totalInstallments: 100,
-    dueAmount: 220,
-    overdueDays: 0,
-    loanType: "Daily Collection",
-    assignedStaff: "Karthik Rajan",
-    isCollected: false,
-  },
-  {
-    id: "due-2",
-    loanId: "ln-2",
-    loanNumber: "LN-2026-0002",
-    customerName: "S. Meenakshi",
-    customerPhone: "+91 97109 88765",
-    customerArea: "North Ward",
-    installmentNo: 3,
-    totalInstallments: 10,
-    dueAmount: 5600,
-    overdueDays: 4,
-    loanType: "Monthly EMI",
-    assignedStaff: "Karthik Rajan",
-    isCollected: false,
-  },
-  {
-    id: "due-3",
-    loanId: "ln-3",
-    loanNumber: "LN-2026-0003",
-    customerName: "V. Thangaraj",
-    customerPhone: "+91 94441 22334",
-    customerArea: "Main Market Route",
-    installmentNo: 6,
-    totalInstallments: 10,
-    dueAmount: 1650,
-    overdueDays: 0,
-    loanType: "Weekly Collection",
-    assignedStaff: "Karthik Rajan",
-    isCollected: true,
-    collectedAmount: 1650,
-    paymentMode: "Cash",
-    receiptNumber: "RCP-2026-0091",
-  },
-  {
-    id: "due-4",
-    loanId: "ln-4",
-    loanNumber: "LN-2026-0004",
-    customerName: "R. Balamurugan",
-    customerPhone: "+91 98840 99887",
-    customerArea: "South Town",
-    installmentNo: 9,
-    totalInstallments: 12,
-    dueAmount: 1000,
-    overdueDays: 0,
-    loanType: "Gold Loan",
-    assignedStaff: "Suresh Kumar",
-    isCollected: true,
-    collectedAmount: 1000,
-    paymentMode: "UPI",
-    receiptNumber: "RCP-2026-0092",
-  },
-  {
-    id: "due-5",
-    loanId: "ln-5",
-    loanNumber: "LN-2026-0005",
-    customerName: "M. Selvaraj",
-    customerPhone: "+91 97890 11223",
-    customerArea: "Main Market Route",
-    installmentNo: 12,
-    totalInstallments: 100,
-    dueAmount: 300,
-    overdueDays: 1,
-    loanType: "Daily Collection",
-    assignedStaff: "Karthik Rajan",
-    isCollected: false,
-  },
-];
-
 export default function CollectionsPage() {
   const t = useTranslations();
   const params = useParams();
   const locale = (params.locale as string) || "en";
 
-  const [dues, setDues] = useState<DueItem[]>(INITIAL_DUES);
+  const [dues, setDues] = useState<DueItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedArea, setSelectedArea] = useState("all");
   const [activeTab, setActiveTab] = useState<"all" | "pending" | "collected" | "overdue">("all");
   const [search, setSearch] = useState("");
@@ -154,7 +73,41 @@ export default function CollectionsPage() {
   const [paymentMode, setPaymentMode] = useState<"Cash" | "UPI" | "Bank Transfer">("Cash");
   const [collectSuccess, setCollectSuccess] = useState<string | null>(null);
 
-  const areas = ["all", "Main Market Route", "North Ward", "South Town", "East Bazaar"];
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const loans = await fetchAllLoans();
+        const activeLoans = loans.filter((l) => l.status === "active" || l.status === "overdue");
+
+        const generatedDues: DueItem[] = activeLoans.map((loan, idx) => ({
+          id: `due-${loan.id}`,
+          loanId: loan.id,
+          loanNumber: loan.loanNumber,
+          customerName: loan.customerName,
+          customerPhone: loan.phone,
+          customerArea: loan.area,
+          installmentNo: (loan.paidInstallments || 0) + 1,
+          totalInstallments: loan.totalInstallments,
+          dueAmount: loan.installmentAmount,
+          overdueDays: loan.overdueInstallments > 0 ? loan.overdueInstallments * 7 : 0,
+          loanType: loan.loanType === "daily" ? "Daily Collection" : loan.loanType === "weekly" ? "Weekly Collection" : "Monthly EMI",
+          assignedStaff: loan.assignedStaff || "Admin",
+          isCollected: false,
+        }));
+
+        setDues(generatedDues);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const uniqueAreas = Array.from(new Set(dues.map((d) => d.customerArea).filter(Boolean)));
+  const areas = ["all", ...uniqueAreas];
 
   const filteredDues = dues.filter((item) => {
     const matchesArea = selectedArea === "all" || item.customerArea === selectedArea;
@@ -179,157 +132,177 @@ export default function CollectionsPage() {
 
   const handleOpenCollectModal = (item: DueItem) => {
     setCollectingItem(item);
-    setCollectAmount(String(item.dueAmount));
+    setCollectAmount(item.dueAmount.toString());
     setPaymentMode("Cash");
+    setCollectSuccess(null);
   };
 
-  const handleConfirmCollection = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleConfirmCollection = () => {
     if (!collectingItem) return;
 
-    const receiptNo = `RCP-2026-${String(Math.floor(Math.random() * 900) + 100).padStart(4, "0")}`;
+    const receiptNo = `RCP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     setDues((prev) =>
-      prev.map((d) =>
-        d.id === collectingItem.id
-          ? {
-              ...d,
-              isCollected: true,
-              collectedAmount: parseFloat(collectAmount) || d.dueAmount,
-              paymentMode,
-              receiptNumber: receiptNo,
-            }
-          : d
-      )
+      prev.map((d) => {
+        if (d.id === collectingItem.id) {
+          return {
+            ...d,
+            isCollected: true,
+            collectedAmount: parseFloat(collectAmount) || d.dueAmount,
+            paymentMode,
+            receiptNumber: receiptNo,
+          };
+        }
+        return d;
+      })
     );
 
     setCollectSuccess(receiptNo);
-    setTimeout(() => {
-      setCollectingItem(null);
-      setCollectSuccess(null);
-    }, 1200);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
+    <div className="space-y-6 animate-fade-in">
+      {/* Top Title & Collection Drive Target */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
             <ReceiptText className="w-7 h-7 text-primary" />
-            {t("collections.title")}
+            {t("collections.title")} (Daily EMI Sheet)
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {t("collections.todaysDue")}
+            Record cash & UPI collections, issue instant digital receipts, and route-wise Vasool tracking
           </p>
         </div>
 
-        <Link href={`/${locale}/payments`}>
-          <Button variant="outline" size="lg" className="gap-2">
-            <CreditCard className="w-4 h-4" />
-            {t("payments.title")}
-          </Button>
-        </Link>
-      </div>
-
-      {/* 4 Summary Stat Metric Counters */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">{t("collections.totalDueToday")}</p>
-          <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-            {formatCurrency(totalTargetToday)}
-          </p>
-        </div>
-        <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">{t("collections.collectedToday")}</p>
-          <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-            {formatCurrency(collectedTodaySum)}
-          </p>
-        </div>
-        <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">{t("collections.pendingToday")}</p>
-          <p className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
-            {formatCurrency(pendingTodaySum)}
-          </p>
-        </div>
-        <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">{t("collections.collected")}</p>
-          <p className="text-xl sm:text-2xl font-bold text-primary mt-1">
-            {dues.filter((d) => d.isCollected).length} / {dues.length}
-          </p>
+        <div className="flex items-center gap-2">
+          <Badge variant="primary" className="text-xs px-3 py-1 font-mono">
+            🗓️ {new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+          </Badge>
         </div>
       </div>
 
-      {/* Filter Tabs & Route Selector */}
-      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-        {/* Status Tabs */}
-        <div className="flex p-1 bg-muted/60 rounded-2xl border border-border/60 overflow-x-auto scrollbar-none">
+      {/* 3 Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-5 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm shadow-sm">
+          <span className="text-xs font-semibold text-muted-foreground">{t("collections.todayTarget")}</span>
+          <p className="text-2xl font-bold text-foreground mt-1.5">{formatCurrency(totalTargetToday)}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            {dues.length} total installment dues today
+          </p>
+        </div>
+
+        <div className="p-5 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm shadow-sm">
+          <span className="text-xs font-semibold text-muted-foreground">{t("collections.collected")}</span>
+          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1.5">{formatCurrency(collectedTodaySum)}</p>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">
+            {dues.filter((d) => d.isCollected).length} paid receipts generated
+          </p>
+        </div>
+
+        <div className="p-5 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm shadow-sm">
+          <span className="text-xs font-semibold text-muted-foreground">{t("collections.pending")}</span>
+          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1.5">{formatCurrency(pendingTodaySum)}</p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium mt-1">
+            {dues.filter((d) => !d.isCollected).length} dues remaining
+          </p>
+        </div>
+      </div>
+
+      {/* Filter Tabs & Area Selector */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder={t("collections.searchPlaceholder")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 h-11"
+            />
+          </div>
+
+          {areas.length > 1 && (
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-muted-foreground shrink-0 hidden sm:inline" />
+              <select
+                value={selectedArea}
+                onChange={(e) => setSelectedArea(e.target.value)}
+                className="h-11 rounded-lg border border-input bg-background px-3 py-2 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-ring w-full sm:w-56"
+              >
+                <option value="all">📍 {t("collections.allAreas")}</option>
+                {areas
+                  .filter((a) => a !== "all")
+                  .map((area) => (
+                    <option key={area} value={area}>
+                      📍 {area}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Tab Pills */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {[
-            { id: "all", label: `${t("common.all")} (${dues.length})` },
-            { id: "pending", label: `${t("installments.statuses.pending")} (${dues.filter((d) => !d.isCollected).length})` },
-            { id: "overdue", label: `${t("installments.statuses.overdue")} ⚠️ (${dues.filter((d) => d.overdueDays > 0 && !d.isCollected).length})` },
-            { id: "collected", label: `${t("collections.collected")} (${dues.filter((d) => d.isCollected).length})` },
+            { key: "all", label: `ALL DUES (${dues.length})` },
+            { key: "pending", label: `PENDING (${dues.filter((d) => !d.isCollected).length})` },
+            { key: "collected", label: `COLLECTED (${dues.filter((d) => d.isCollected).length})` },
+            { key: "overdue", label: `OVERDUE (${dues.filter((d) => d.overdueDays > 0 && !d.isCollected).length})` },
           ].map((tab) => (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                activeTab === tab.id
-                  ? "bg-card text-foreground shadow-sm border border-border/80 font-bold"
-                  : "text-muted-foreground hover:text-foreground"
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                activeTab === tab.key
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
               {tab.label}
             </button>
           ))}
         </div>
-
-        {/* Route Area Selector (Vasool Drive feature) & Search */}
-        <div className="flex gap-2">
-          <div className="relative flex-1 sm:w-60">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search borrower or loan #..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 h-10 text-xs"
-            />
-          </div>
-
-          <select
-            value={selectedArea}
-            onChange={(e) => setSelectedArea(e.target.value)}
-            className="h-10 rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">📍 All Routes</option>
-            {areas
-              .filter((a) => a !== "all")
-              .map((area) => (
-                <option key={area} value={area}>
-                  📍 {area}
-                </option>
-              ))}
-          </select>
-        </div>
       </div>
 
-      {/* Collection Dues Cards / List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredDues.length === 0 ? (
-          <div className="col-span-2 p-12 text-center border border-dashed border-border rounded-2xl bg-muted/20">
-            <CheckCircle2 className="w-10 h-10 text-success mx-auto mb-3" />
-            <h3 className="font-semibold text-base text-foreground">No pending collections in this filter</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              All collections cleared or none match the selected route
-            </p>
+      {/* Due Collection Cards Grid */}
+      {loading ? (
+        <div className="p-12 text-center border border-dashed border-border rounded-2xl bg-card/50">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
+          <p className="text-sm text-muted-foreground">Loading collection sheet...</p>
+        </div>
+      ) : dues.length === 0 ? (
+        <div className="p-12 text-center border border-dashed border-border rounded-2xl bg-muted/20 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4 text-primary">
+            <ReceiptText className="w-8 h-8 opacity-80" />
           </div>
-        ) : (
-          filteredDues.map((item) => (
+          <h3 className="font-bold text-lg text-foreground">No dues scheduled</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+            When you disburse daily or weekly loans, active installments will automatically appear here on your collection drive sheet.
+          </p>
+          <Link href={`/${locale}/loans/new`} className="mt-5">
+            <Button size="lg" className="gap-2">
+              <Plus className="w-4 h-4" />
+              Disburse a Loan
+            </Button>
+          </Link>
+        </div>
+      ) : filteredDues.length === 0 ? (
+        <div className="p-12 text-center border border-dashed border-border rounded-2xl bg-muted/20">
+          <ReceiptText className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+          <h3 className="font-semibold text-base text-foreground">No records match filter</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Try adjusting your search query or route selection
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredDues.map((item) => (
             <div
               key={item.id}
-              className={`rounded-2xl border bg-card/80 backdrop-blur-sm p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-4 ${
+              className={`rounded-2xl border bg-card/80 backdrop-blur-sm p-5 shadow-sm transition-all flex flex-col justify-between gap-4 ${
                 item.isCollected
-                  ? "border-success/40 bg-success/5"
+                  ? "border-emerald-500/40 bg-emerald-500/5"
                   : item.overdueDays > 0
                   ? "border-destructive/40 bg-destructive/5"
                   : "border-border/80"
@@ -339,146 +312,142 @@ export default function CollectionsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-base text-foreground">{item.customerName}</h3>
-                    <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                      {item.loanNumber}
-                    </span>
+                    <span className="font-bold text-sm text-foreground">{item.customerName}</span>
+                    <span className="font-mono text-xs text-muted-foreground">({item.loanNumber})</span>
                   </div>
-
-                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
-                    <MapPin className="w-3.5 h-3.5 text-primary" />
-                    {item.customerArea} • 📞 {item.customerPhone}
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                    <Phone className="w-3 h-3 text-primary" />
+                    {item.customerPhone}
+                    {item.customerArea && item.customerArea !== "N/A" && (
+                      <>
+                        <span className="text-border mx-1">•</span>
+                        <MapPin className="w-3 h-3 text-muted-foreground" />
+                        {item.customerArea}
+                      </>
+                    )}
                   </p>
                 </div>
 
+                {item.isCollected ? (
+                  <Badge variant="success" className="gap-1 text-xs">
+                    <CheckCircle2 className="w-3 h-3" /> Paid
+                  </Badge>
+                ) : item.overdueDays > 0 ? (
+                  <Badge variant="destructive" className="gap-1 text-xs">
+                    <AlertTriangle className="w-3 h-3" /> {item.overdueDays}d Overdue
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-xs">
+                    Pending
+                  </Badge>
+                )}
+              </div>
+
+              {/* Installment Details */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/50 text-xs">
+                <div>
+                  <span className="text-muted-foreground">Installment:</span>
+                  <p className="font-bold text-foreground mt-0.5">
+                    #{item.installmentNo} of {item.totalInstallments} ({item.loanType})
+                  </p>
+                </div>
                 <div className="text-right">
-                  <span className="text-[11px] text-muted-foreground">Due Amount:</span>
-                  <p className="font-bold text-xl text-foreground">
+                  <span className="text-muted-foreground">Amount Due:</span>
+                  <p className="font-bold text-base text-foreground mt-0.5">
                     {formatCurrency(item.dueAmount)}
                   </p>
                 </div>
               </div>
 
-              {/* Installment Badge & Overdue Warning */}
-              <div className="flex items-center justify-between text-xs bg-muted/30 p-2.5 rounded-xl border border-border/50">
-                <span className="font-medium text-foreground">
-                  Installment #{item.installmentNo} of {item.totalInstallments} ({item.loanType})
-                </span>
-
-                {item.isCollected ? (
-                  <Badge variant="success" className="gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Paid ({item.paymentMode})
-                  </Badge>
-                ) : item.overdueDays > 0 ? (
-                  <Badge variant="destructive" className="gap-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    {item.overdueDays} Days Overdue
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-amber-600 border-amber-500/30 bg-amber-500/10">
-                    Due Today
-                  </Badge>
-                )}
-              </div>
-
-              {/* Bottom Action Buttons */}
+              {/* Action Buttons */}
               <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                {item.isCollected ? (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>Receipt: <strong className="text-foreground font-mono">{item.receiptNumber}</strong></span>
-                    <Link href={`/${locale}/payments/${item.receiptNumber}/receipt`}>
-                      <Button variant="ghost" size="sm" className="h-7 text-xs text-primary gap-1">
-                        <Printer className="w-3 h-3" />
-                        Receipt
-                      </Button>
-                    </Link>
-                  </div>
-                ) : (
-                  <a
-                    href={getWhatsAppShareUrl(
-                      item.customerPhone,
-                      `வணக்கம் ${item.customerName}, இன்று உங்கள் கடன் தவணை ₹${item.dueAmount} செலுத்த வேண்டிய நாள். - ஸ்ரீ கிருஷ்ணா பைனான்ஸ்.`
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    WhatsApp Due Alert
-                  </a>
-                )}
+                <a
+                  href={getWhatsAppShareUrl(
+                    item.customerPhone,
+                    `Hello ${item.customerName}, installment #${item.installmentNo} for loan ${item.loanNumber} of amount ₹${item.dueAmount} is due today. - Finance Office.`
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Remind
+                </a>
 
-                {!item.isCollected ? (
+                {item.isCollected ? (
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {item.receiptNumber} ({item.paymentMode})
+                  </span>
+                ) : (
                   <Button
                     size="sm"
+                    variant="success"
                     onClick={() => handleOpenCollectModal(item)}
-                    className="gap-1.5 bg-primary hover:bg-primary/90 text-xs shadow-md shadow-primary/20"
+                    className="h-8 px-3 text-xs gap-1.5"
                   >
                     <CreditCard className="w-3.5 h-3.5" />
-                    Collect ₹{item.dueAmount}
+                    Record Payment
                   </Button>
-                ) : (
-                  <a
-                    href={getWhatsAppShareUrl(
-                      item.customerPhone,
-                      `ரசீது: ${item.receiptNumber}\nவாடிக்கையாளர்: ${item.customerName}\nவசூலித்த தொகை: ₹${item.collectedAmount}\nசெலுத்திய முறை: ${item.paymentMode}\nநன்றி - ஸ்ரீ கிருஷ்ணா பைனான்ஸ்.`
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs gap-1.5 text-emerald-600 border-emerald-500/30">
-                      <Send className="w-3.5 h-3.5" />
-                      Send WhatsApp Receipt
-                    </Button>
-                  </a>
                 )}
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
-      {/* Payment Collection Modal */}
+      {/* Collect Modal */}
       {collectingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-card border border-border/80 rounded-3xl shadow-2xl overflow-hidden animate-scale-in">
-            <div className="p-6 border-b border-border/60 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-lg text-foreground">Record Payment Collection</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {collectingItem.customerName} • {collectingItem.loanNumber}
-                </p>
-              </div>
-              <button
-                onClick={() => setCollectingItem(null)}
-                className="p-2 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <Card className="max-w-md w-full border-border bg-card shadow-2xl p-6 relative">
+            <button
+              onClick={() => setCollectingItem(null)}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-5 h-5" />
+            </button>
 
             {collectSuccess ? (
-              <div className="p-8 text-center space-y-3">
-                <div className="w-14 h-14 rounded-full bg-success/20 text-success flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-8 h-8" />
+              <div className="text-center space-y-4 py-4">
+                <div className="w-12 h-12 rounded-full bg-success/20 text-success flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-6 h-6" />
                 </div>
-                <h4 className="font-bold text-lg text-foreground">Payment Collected!</h4>
-                <p className="text-xs text-muted-foreground">
-                  Receipt Generated: <strong className="text-foreground font-mono">{collectSuccess}</strong>
-                </p>
+                <h3 className="font-bold text-lg text-foreground">Collection Recorded!</h3>
+                <p className="text-xs text-muted-foreground font-mono">Receipt No: {collectSuccess}</p>
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setCollectingItem(null)}>
+                    Close
+                  </Button>
+                  <a
+                    href={getWhatsAppShareUrl(
+                      collectingItem.customerPhone,
+                      `✅ Payment Received! Received ₹${collectAmount} for loan ${collectingItem.loanNumber}. Receipt: ${collectSuccess}. - Thank you.`
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1"
+                  >
+                    <Button variant="success" className="w-full gap-1.5 text-xs">
+                      <Send className="w-3.5 h-3.5" /> WhatsApp
+                    </Button>
+                  </a>
+                </div>
               </div>
             ) : (
-              <form onSubmit={handleConfirmCollection} className="p-6 space-y-4">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-bold text-base text-foreground">Record Collection</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {collectingItem.customerName} • {collectingItem.loanNumber}
+                  </p>
+                </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="payAmt" required>Collection Amount (₹)</Label>
+                  <Label htmlFor="cAmount">Collected Amount (₹)</Label>
                   <Input
-                    id="payAmt"
+                    id="cAmount"
                     type="number"
                     value={collectAmount}
                     onChange={(e) => setCollectAmount(e.target.value)}
-                    className="text-lg font-bold"
-                    required
                   />
                 </div>
 
@@ -487,13 +456,13 @@ export default function CollectionsPage() {
                   <div className="grid grid-cols-3 gap-2">
                     {(["Cash", "UPI", "Bank Transfer"] as const).map((mode) => (
                       <button
-                        type="button"
                         key={mode}
+                        type="button"
                         onClick={() => setPaymentMode(mode)}
-                        className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                        className={`py-2 px-3 rounded-lg border text-xs font-semibold transition-all ${
                           paymentMode === mode
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                            : "bg-muted/40 border-border/80 text-muted-foreground hover:text-foreground"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-muted/40 text-muted-foreground hover:text-foreground"
                         }`}
                       >
                         {mode}
@@ -502,29 +471,17 @@ export default function CollectionsPage() {
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-muted/30 border border-border/50 text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Installment:</span>
-                    <span className="font-semibold">#{collectingItem.installmentNo} ({collectingItem.loanType})</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Officer:</span>
-                    <span className="font-semibold">{collectingItem.assignedStaff}</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setCollectingItem(null)}>
+                <div className="pt-2 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setCollectingItem(null)}>
                     Cancel
                   </Button>
-                  <Button type="submit" size="lg" className="gap-2">
-                    <CheckCircle2 className="w-4 h-4" />
-                    Confirm & Issue Receipt
+                  <Button variant="success" onClick={handleConfirmCollection}>
+                    Confirm & Generate Receipt
                   </Button>
                 </div>
-              </form>
+              </div>
             )}
-          </div>
+          </Card>
         </div>
       )}
     </div>

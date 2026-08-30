@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -19,94 +19,111 @@ import {
   Calendar,
   Filter,
   TrendingUp,
-  TrendingDown,
   Users,
   MapPin,
   CheckCircle2,
   AlertTriangle,
   Clock,
   ArrowUpRight,
+  HandCoins,
 } from "lucide-react";
 import { formatCurrency, formatCurrencyShort, formatDate } from "@/lib/utils";
+import { fetchAllCustomers, CustomerData } from "@/lib/services/customerService";
+import { fetchAllLoans, LoanData } from "@/lib/services/loanService";
 
 export default function ReportsPage() {
   const t = useTranslations();
   const params = useParams();
   const locale = (params.locale as string) || "en";
 
-  const [activeReportTab, setActiveReportTab] = useState<"daily" | "staff" | "area" | "aging">("daily");
-  const [dateRange, setDateRange] = useState("thisMonth");
+  const [activeReportTab, setActiveReportTab] = useState<"daily" | "area" | "aging">("daily");
+  const [customers, setCustomers] = useState<CustomerData[]>([]);
+  const [loans, setLoans] = useState<LoanData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Sample Daily Collection Data
-  const dailyData = [
-    { date: "2026-08-27", totalDues: 48500, collected: 38000, cash: 24000, upi: 14000, count: 28 },
-    { date: "2026-08-26", totalDues: 46000, collected: 42500, cash: 28000, upi: 14500, count: 31 },
-    { date: "2026-08-25", totalDues: 52000, collected: 49000, cash: 32000, upi: 17000, count: 35 },
-    { date: "2026-08-24", totalDues: 39000, collected: 36500, cash: 25000, upi: 11500, count: 24 },
-    { date: "2026-08-23", totalDues: 44000, collected: 41000, cash: 29000, upi: 12000, count: 29 },
-  ];
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const [cList, lList] = await Promise.all([
+          fetchAllCustomers(),
+          fetchAllLoans(),
+        ]);
+        setCustomers(cList);
+        setLoans(lList);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
-  // Sample Staff Performance Data
-  const staffData = [
-    { name: "Karthik Rajan", role: "Manager", route: "Main Market Route, North Ward", target: 350000, collected: 320000, efficiency: 91, borrowers: 45 },
-    { name: "Suresh Kumar", role: "Field Agent", route: "South Town", target: 200000, collected: 185000, efficiency: 92, borrowers: 28 },
-    { name: "Murugan Selvam", role: "Owner", route: "All Routes (Direct)", target: 100000, collected: 95000, efficiency: 95, borrowers: 14 },
-  ];
+  const totalDisbursed = loans.reduce((acc, l) => acc + l.principalAmount, 0);
+  const totalRepaid = loans.reduce((acc, l) => acc + l.totalPaid, 0);
+  const totalOutstanding = loans.reduce((acc, l) => acc + l.remainingBalance, 0);
+  const totalInterestExpected = loans.reduce((acc, l) => acc + l.totalInterest, 0);
 
-  // Sample Area Performance Data
-  const areaData = [
-    { area: "Main Market Route", borrowers: 45, activeLoans: 34, totalDisbursed: 680000, collectedThisMonth: 245000, recoveryRate: 94 },
-    { area: "North Ward", borrowers: 32, activeLoans: 24, totalDisbursed: 480000, collectedThisMonth: 168000, recoveryRate: 88 },
-    { area: "South Town", borrowers: 28, activeLoans: 20, totalDisbursed: 420000, collectedThisMonth: 145000, recoveryRate: 92 },
-    { area: "East Bazaar", borrowers: 23, activeLoans: 16, totalDisbursed: 270000, collectedThisMonth: 52000, recoveryRate: 85 },
-  ];
+  // Area statistics computed dynamically from customer & loan data
+  const areaMap = new Map<string, { borrowers: number; activeLoans: number; totalDisbursed: number; totalOutstanding: number }>();
+  customers.forEach((c) => {
+    const area = c.area || "General Route";
+    const existing = areaMap.get(area) || { borrowers: 0, activeLoans: 0, totalDisbursed: 0, totalOutstanding: 0 };
+    existing.borrowers += 1;
+    areaMap.set(area, existing);
+  });
 
-  // Sample Aging Overdue Data
-  const agingData = [
-    { bracket: "1 - 7 Days Overdue", accounts: 5, amount: 18500, risk: "Low" },
-    { bracket: "8 - 15 Days Overdue", accounts: 3, amount: 14000, risk: "Medium" },
-    { bracket: "16 - 30 Days Overdue", accounts: 2, amount: 9800, risk: "Moderate" },
-    { bracket: "30+ Days Overdue (Critical)", accounts: 1, amount: 6200, risk: "High" },
-  ];
+  loans.forEach((l) => {
+    const area = l.area || "General Route";
+    const existing = areaMap.get(area) || { borrowers: 1, activeLoans: 0, totalDisbursed: 0, totalOutstanding: 0 };
+    if (l.status === "active" || l.status === "overdue") {
+      existing.activeLoans += 1;
+    }
+    existing.totalDisbursed += l.principalAmount;
+    existing.totalOutstanding += l.remainingBalance;
+    areaMap.set(area, existing);
+  });
 
-  // Instant CSV Download Function
+  const areaList = Array.from(areaMap.entries()).map(([area, data]) => ({
+    area,
+    ...data,
+  }));
+
+  const overdueLoans = loans.filter((l) => l.status === "overdue");
+
   const handleExportCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
 
     if (activeReportTab === "daily") {
-      csvContent += "Date,Total Dues,Collected Amount,Cash Amount,UPI Amount,Collections Count\n";
-      dailyData.forEach((row) => {
-        csvContent += `${row.date},${row.totalDues},${row.collected},${row.cash},${row.upi},${row.count}\n`;
-      });
-    } else if (activeReportTab === "staff") {
-      csvContent += "Staff Name,Role,Assigned Route,Target,Collected,Efficiency %,Borrowers\n";
-      staffData.forEach((row) => {
-        csvContent += `"${row.name}","${row.role}","${row.route}",${row.target},${row.collected},${row.efficiency}%,${row.borrowers}\n`;
+      csvContent += "Loan Number,Borrower,Phone,Area,Type,Principal,Repaid,Outstanding,Status\n";
+      loans.forEach((l) => {
+        csvContent += `"${l.loanNumber}","${l.customerName}","${l.phone}","${l.area}","${l.loanType}",${l.principalAmount},${l.totalPaid},${l.remainingBalance},"${l.status}"\n`;
       });
     } else if (activeReportTab === "area") {
-      csvContent += "Area Name,Borrowers,Active Loans,Total Disbursed,Collected This Month,Recovery Rate %\n";
-      areaData.forEach((row) => {
-        csvContent += `"${row.area}",${row.borrowers},${row.activeLoans},${row.totalDisbursed},${row.collectedThisMonth},${row.recoveryRate}%\n`;
+      csvContent += "Area Route,Registered Borrowers,Active Loans,Total Disbursed,Total Outstanding\n";
+      areaList.forEach((a) => {
+        csvContent += `"${a.area}",${a.borrowers},${a.activeLoans},${a.totalDisbursed},${a.totalOutstanding}\n`;
       });
     } else {
-      csvContent += "Overdue Bracket,Account Count,Overdue Amount,Risk Level\n";
-      agingData.forEach((row) => {
-        csvContent += `"${row.bracket}",${row.accounts},${row.amount},"${row.risk}"\n`;
+      csvContent += "Loan Number,Borrower,Phone,Outstanding Due,Overdue Installments,Status\n";
+      overdueLoans.forEach((l) => {
+        csvContent += `"${l.loanNumber}","${l.customerName}","${l.phone}",${l.remainingBalance},${l.overdueInstallments},"${l.status}"\n`;
       });
     }
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `LoanLender_${activeReportTab}_report_${new Date().toISOString().split("T")[0]}.csv`);
+    link.setAttribute("download", `loan_lender_report_${activeReportTab}_${new Date().toISOString().split("T")[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-6 animate-fade-in">
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
@@ -114,235 +131,199 @@ export default function ReportsPage() {
             {t("reports.title")} & Analytics
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            P&L overview, agent efficiency, route recovery rates, and overdue aging
+            Audit-ready export reports, area breakdown, delinquency metrics, and collection summaries
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <select
-            value={dateRange}
-            onChange={(e) => setDateRange(e.target.value)}
-            className="h-10 rounded-xl border border-input bg-background px-3 py-1 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="today">Today</option>
-            <option value="thisWeek">This Week</option>
-            <option value="thisMonth">This Month (August 2026)</option>
-            <option value="lastMonth">Last Month</option>
-            <option value="thisYear">This Financial Year</option>
-          </select>
-
-          <Button size="sm" onClick={handleExportCSV} className="gap-2 shadow-md shadow-primary/20">
-            <Download className="w-4 h-4" />
-            Export CSV
-          </Button>
-        </div>
+        <Button onClick={handleExportCSV} size="lg" className="w-full sm:w-auto gap-2">
+          <Download className="w-4 h-4" />
+          {t("reports.exportCSV")}
+        </Button>
       </div>
 
-      {/* 4 Financial P&L Cards */}
+      {/* 4 Summary Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">Total Collections</p>
-          <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
-            {formatCurrency(610000)}
-          </p>
-          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            +14% vs last month
-          </span>
+          <span className="text-xs font-semibold text-muted-foreground">{t("loans.totalDisbursed")}</span>
+          <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">{formatCurrencyShort(totalDisbursed)}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{loans.length} total loans issued</p>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">Total Loans Disbursed</p>
-          <p className="text-xl sm:text-2xl font-bold text-primary mt-1">
-            {formatCurrencyShort(1850000)}
+          <span className="text-xs font-semibold text-muted-foreground">Total Recovered</span>
+          <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrencyShort(totalRepaid)}</p>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
+            {totalDisbursed > 0 ? `${Math.round((totalRepaid / totalDisbursed) * 100)}% recovery rate` : "0% recovery"}
           </p>
-          <span className="text-[11px] text-muted-foreground mt-0.5">Across 94 active loans</span>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">Operating Expenses</p>
-          <p className="text-xl sm:text-2xl font-bold text-destructive mt-1">
-            {formatCurrency(31700)}
-          </p>
-          <span className="text-[11px] text-muted-foreground mt-0.5">Salaries, Rent & Fuel</span>
+          <span className="text-xs font-semibold text-muted-foreground">{t("dashboard.outstandingAmount")}</span>
+          <p className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">{formatCurrencyShort(totalOutstanding)}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Active portfolio balance</p>
         </div>
 
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">Net Profit / Margin</p>
-          <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-            +{formatCurrency(578300)}
-          </p>
-          <span className="text-[11px] text-emerald-600 font-semibold mt-0.5">94.8% Operational Margin</span>
+          <span className="text-xs font-semibold text-muted-foreground">Projected Interest</span>
+          <p className="text-xl sm:text-2xl font-bold text-primary mt-1">{formatCurrencyShort(totalInterestExpected)}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Total yield profit</p>
         </div>
       </div>
 
-      {/* Report Type Selector Tabs */}
-      <div className="flex p-1 bg-muted/60 rounded-2xl border border-border/60 overflow-x-auto scrollbar-none w-fit">
-        {[
-          { id: "daily", label: "Daily Collections" },
-          { id: "staff", label: "Agent Performance" },
-          { id: "area", label: "Route Breakdown" },
-          { id: "aging", label: "Overdue Aging Analysis" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveReportTab(tab.id as any)}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-              activeReportTab === tab.id
-                ? "bg-card text-foreground shadow-sm border border-border/80 font-bold"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-border/80 pb-2">
+        <button
+          onClick={() => setActiveReportTab("daily")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            activeReportTab === "daily" ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/50 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Loans Portfolio Summary ({loans.length})
+        </button>
+        <button
+          onClick={() => setActiveReportTab("area")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            activeReportTab === "area" ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/50 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Area Route Breakdown ({areaList.length})
+        </button>
+        <button
+          onClick={() => setActiveReportTab("aging")}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            activeReportTab === "aging" ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/50 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Overdue Delinquency ({overdueLoans.length})
+        </button>
       </div>
 
-      {/* TAB 1: Daily Collections Summary */}
+      {/* Tab 1: Loans Portfolio Table */}
       {activeReportTab === "daily" && (
-        <Card className="border-border/80 bg-card/80 backdrop-blur-sm animate-fade-in">
-          <CardHeader>
-            <CardTitle className="text-base">Daily Collection Log</CardTitle>
-            <CardDescription>
-              Day-by-day collections with Cash vs UPI splits
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="border border-border/80 rounded-2xl overflow-hidden divide-y divide-border/60">
-              <div className="grid grid-cols-5 p-3 bg-muted/40 text-xs font-bold text-muted-foreground">
-                <span>Date</span>
-                <span>Due Target</span>
-                <span>Collected</span>
-                <span>Cash vs UPI</span>
-                <span className="text-right">Rate</span>
-              </div>
-              {dailyData.map((d, idx) => (
-                <div key={idx} className="grid grid-cols-5 p-3.5 text-xs items-center hover:bg-muted/30">
-                  <span className="font-semibold text-foreground">{formatDate(d.date)}</span>
-                  <span className="text-muted-foreground">{formatCurrency(d.totalDues)}</span>
-                  <span className="font-bold text-foreground">{formatCurrency(d.collected)}</span>
-                  <span className="text-muted-foreground text-[11px]">
-                    💵 ₹{d.cash} • 📱 ₹{d.upi}
-                  </span>
-                  <div className="text-right">
-                    <Badge variant="success">
-                      {Math.round((d.collected / d.totalDues) * 100)}%
-                    </Badge>
-                  </div>
-                </div>
-              ))}
+        <div className="rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm">
+          {loans.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground">
+              <FileSpreadsheet className="w-10 h-10 mx-auto mb-2 opacity-40" />
+              <p className="font-semibold text-foreground text-sm">No loan data to report</p>
+              <p className="text-xs mt-1">When loans are disbursed, portfolio summary reports will generate automatically.</p>
             </div>
-          </CardContent>
-        </Card>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/50 border-b border-border/80 text-muted-foreground font-semibold">
+                  <tr>
+                    <th className="p-4">Loan Account</th>
+                    <th className="p-4">Borrower</th>
+                    <th className="p-4">Route</th>
+                    <th className="p-4">Principal</th>
+                    <th className="p-4">Total Paid</th>
+                    <th className="p-4">Balance</th>
+                    <th className="p-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {loans.map((l) => (
+                    <tr key={l.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="p-4 font-mono font-bold text-foreground">{l.loanNumber}</td>
+                      <td className="p-4">
+                        <p className="font-bold text-foreground">{l.customerName}</p>
+                        <p className="text-[11px] text-muted-foreground">{l.phone}</p>
+                      </td>
+                      <td className="p-4 text-muted-foreground">{l.area}</td>
+                      <td className="p-4 font-bold text-foreground">{formatCurrency(l.principalAmount)}</td>
+                      <td className="p-4 font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(l.totalPaid)}</td>
+                      <td className="p-4 font-bold text-amber-600 dark:text-amber-400">{formatCurrency(l.remainingBalance)}</td>
+                      <td className="p-4">
+                        <Badge variant={l.status === "active" ? "success" : l.status === "overdue" ? "destructive" : "secondary"}>
+                          {l.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* TAB 2: Agent Performance */}
-      {activeReportTab === "staff" && (
-        <Card className="border-border/80 bg-card/80 backdrop-blur-sm animate-fade-in">
-          <CardHeader>
-            <CardTitle className="text-base">Staff & Agent Recovery Performance</CardTitle>
-            <CardDescription>
-              Target vs actual collections per field officer
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="border border-border/80 rounded-2xl overflow-hidden divide-y divide-border/60">
-              <div className="grid grid-cols-5 p-3 bg-muted/40 text-xs font-bold text-muted-foreground">
-                <span>Officer</span>
-                <span>Assigned Route</span>
-                <span>Target</span>
-                <span>Collected</span>
-                <span className="text-right">Efficiency</span>
-              </div>
-              {staffData.map((s, idx) => (
-                <div key={idx} className="grid grid-cols-5 p-3.5 text-xs items-center hover:bg-muted/30">
-                  <div>
-                    <p className="font-bold text-foreground">{s.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{s.role}</p>
-                  </div>
-                  <span className="text-muted-foreground">{s.route}</span>
-                  <span className="text-muted-foreground">{formatCurrency(s.target)}</span>
-                  <span className="font-bold text-foreground">{formatCurrency(s.collected)}</span>
-                  <div className="text-right">
-                    <Badge variant={s.efficiency >= 90 ? "success" : "warning"}>
-                      {s.efficiency}% Recovery
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* TAB 3: Route Breakdown */}
+      {/* Tab 2: Area Breakdown */}
       {activeReportTab === "area" && (
-        <Card className="border-border/80 bg-card/80 backdrop-blur-sm animate-fade-in">
-          <CardHeader>
-            <CardTitle className="text-base">Collection Route Breakdown</CardTitle>
-            <CardDescription>
-              Volume and recovery rate comparison by area
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="border border-border/80 rounded-2xl overflow-hidden divide-y divide-border/60">
-              <div className="grid grid-cols-5 p-3 bg-muted/40 text-xs font-bold text-muted-foreground">
-                <span>Route / Area</span>
-                <span>Borrowers</span>
-                <span>Disbursed</span>
-                <span>Collected</span>
-                <span className="text-right">Recovery Rate</span>
-              </div>
-              {areaData.map((a, idx) => (
-                <div key={idx} className="grid grid-cols-5 p-3.5 text-xs items-center hover:bg-muted/30">
-                  <span className="font-bold text-foreground">{a.area}</span>
-                  <span className="text-muted-foreground">{a.borrowers} Borrowers ({a.activeLoans} loans)</span>
-                  <span className="text-muted-foreground">{formatCurrency(a.totalDisbursed)}</span>
-                  <span className="font-bold text-foreground">{formatCurrency(a.collectedThisMonth)}</span>
-                  <div className="text-right">
-                    <Badge variant={a.recoveryRate >= 90 ? "success" : "warning"}>
-                      {a.recoveryRate}%
-                    </Badge>
-                  </div>
-                </div>
-              ))}
+        <div className="rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm">
+          {areaList.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground">
+              <MapPin className="w-10 h-10 mx-auto mb-2 opacity-40" />
+              <p className="font-semibold text-foreground text-sm">No area routes recorded yet</p>
             </div>
-          </CardContent>
-        </Card>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/50 border-b border-border/80 text-muted-foreground font-semibold">
+                  <tr>
+                    <th className="p-4">Territory / Route</th>
+                    <th className="p-4">Borrowers</th>
+                    <th className="p-4">Active Loans</th>
+                    <th className="p-4">Disbursed Amount</th>
+                    <th className="p-4">Outstanding Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {areaList.map((a, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30 transition-colors">
+                      <td className="p-4 font-bold text-foreground flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-primary" />
+                        {a.area}
+                      </td>
+                      <td className="p-4 text-foreground">{a.borrowers}</td>
+                      <td className="p-4 text-foreground font-semibold">{a.activeLoans}</td>
+                      <td className="p-4 font-bold text-foreground">{formatCurrency(a.totalDisbursed)}</td>
+                      <td className="p-4 font-bold text-amber-600 dark:text-amber-400">{formatCurrency(a.totalOutstanding)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* TAB 4: Aging Analysis */}
+      {/* Tab 3: Overdue */}
       {activeReportTab === "aging" && (
-        <Card className="border-border/80 bg-card/80 backdrop-blur-sm animate-fade-in">
-          <CardHeader>
-            <CardTitle className="text-base">Loan Overdue Aging Analysis</CardTitle>
-            <CardDescription>
-              Risk distribution of delayed borrower installments
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="border border-border/80 rounded-2xl overflow-hidden divide-y divide-border/60">
-              <div className="grid grid-cols-4 p-3 bg-muted/40 text-xs font-bold text-muted-foreground">
-                <span>Overdue Bracket</span>
-                <span>Account Count</span>
-                <span>Overdue Balance</span>
-                <span className="text-right">Risk Level</span>
-              </div>
-              {agingData.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-4 p-3.5 text-xs items-center hover:bg-muted/30">
-                  <span className="font-semibold text-foreground">{g.bracket}</span>
-                  <span className="text-muted-foreground">{g.accounts} Borrowers</span>
-                  <span className="font-bold text-destructive">{formatCurrency(g.amount)}</span>
-                  <div className="text-right">
-                    <Badge variant={g.risk === "Low" ? "default" : g.risk === "Medium" ? "warning" : "destructive"}>
-                      {g.risk} Risk
-                    </Badge>
-                  </div>
-                </div>
-              ))}
+        <div className="rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm">
+          {overdueLoans.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground">
+              <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-500 opacity-70" />
+              <p className="font-semibold text-foreground text-sm">No overdue accounts!</p>
+              <p className="text-xs mt-1">All loan installments are up to date.</p>
             </div>
-          </CardContent>
-        </Card>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/50 border-b border-border/80 text-muted-foreground font-semibold">
+                  <tr>
+                    <th className="p-4">Account</th>
+                    <th className="p-4">Customer</th>
+                    <th className="p-4">Overdue Installments</th>
+                    <th className="p-4">Outstanding Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {overdueLoans.map((l) => (
+                    <tr key={l.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="p-4 font-mono font-bold text-foreground">{l.loanNumber}</td>
+                      <td className="p-4">
+                        <p className="font-bold text-foreground">{l.customerName}</p>
+                        <p className="text-[11px] text-muted-foreground">{l.phone}</p>
+                      </td>
+                      <td className="p-4 font-bold text-destructive">{l.overdueInstallments} unpaid</td>
+                      <td className="p-4 font-bold text-destructive">{formatCurrency(l.remainingBalance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

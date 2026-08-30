@@ -26,166 +26,101 @@ export interface CustomerData {
   createdAt?: string;
 }
 
-const STORAGE_KEY = "loan_lender_customers_v1";
-
-const INITIAL_CUSTOMERS: CustomerData[] = [
-  {
-    id: "cus-1",
-    customerNumber: "CUS-0001",
-    fullName: "K. Annadurai",
-    phone: "+91 98401 55678",
-    altPhone: "+91 94440 12345",
-    area: "Main Market Route",
-    city: "Madurai",
-    state: "Tamil Nadu",
-    pincode: "625001",
-    address: "Shop #45, Main Bazaar, Near Old Bus Stand, Madurai",
-    idType: "Aadhaar Card",
-    idNumber: "5432 9876 1234",
-    activeLoansCount: 1,
-    totalOutstanding: 14500,
-    portalEnabled: true,
-    preferredLang: "ta",
-    status: "active",
-  },
-  {
-    id: "cus-2",
-    customerNumber: "CUS-0002",
-    fullName: "S. Meenakshi",
-    phone: "+91 97109 88765",
-    area: "North Ward",
-    city: "Madurai",
-    activeLoansCount: 2,
-    totalOutstanding: 42000,
-    portalEnabled: true,
-    preferredLang: "ta",
-    status: "active",
-  },
-  {
-    id: "cus-3",
-    customerNumber: "CUS-0003",
-    fullName: "V. Thangaraj",
-    phone: "+91 94441 22334",
-    area: "Main Market Route",
-    city: "Madurai",
-    activeLoansCount: 1,
-    totalOutstanding: 8000,
-    portalEnabled: false,
-    preferredLang: "en",
-    status: "active",
-  },
-  {
-    id: "cus-4",
-    customerNumber: "CUS-0004",
-    fullName: "R. Balamurugan",
-    phone: "+91 98840 99887",
-    area: "South Town",
-    city: "Madurai",
-    activeLoansCount: 1,
-    totalOutstanding: 25000,
-    portalEnabled: true,
-    preferredLang: "ta",
-    status: "active",
-  },
-  {
-    id: "cus-5",
-    customerNumber: "CUS-0005",
-    fullName: "P. Rajesh Kumar",
-    phone: "+91 96001 44556",
-    area: "East Bazaar",
-    city: "Madurai",
-    activeLoansCount: 1,
-    totalOutstanding: 10000,
-    portalEnabled: true,
-    preferredLang: "hi",
-    status: "active",
-  },
-];
-
-// Helper to get from local storage
-export function getLocalCustomers(): CustomerData[] {
-  if (typeof window === "undefined") return INITIAL_CUSTOMERS;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_CUSTOMERS));
-      return INITIAL_CUSTOMERS;
-    }
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error("Error reading customers from localStorage:", e);
-    return INITIAL_CUSTOMERS;
-  }
-}
-
-// Helper to save to local storage
-export function saveLocalCustomer(customer: CustomerData): CustomerData[] {
-  if (typeof window === "undefined") return [customer];
-  try {
-    const list = getLocalCustomers();
-    const updated = [customer, ...list.filter((c) => c.id !== customer.id)];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    return updated;
-  } catch (e) {
-    console.error("Error saving customer to localStorage:", e);
-    return [customer];
-  }
-}
-
-// Fetch all customers (Supabase + Local fallback)
+/**
+ * Fetch all customers belonging to the currently logged-in user ONLY.
+ * Never returns dummy/sample data.
+ * All queries are scoped to auth.uid() via Supabase RLS.
+ */
 export async function fetchAllCustomers(): Promise<CustomerData[]> {
-  const localList = getLocalCustomers();
+  const supabase = createClient();
 
-  try {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .order("created_at", { ascending: false });
+  // Ensure user is authenticated
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
-    if (error || !data || data.length === 0) {
-      return localList;
-    }
+  const { data, error } = await supabase
+    .from("customers")
+    .select("*")
+    .eq("created_by", user.id)
+    .order("created_at", { ascending: false });
 
-    // Map Supabase schema to frontend interface
-    const remoteList: CustomerData[] = data.map((item: any) => ({
-      id: item.id,
-      customerNumber: item.customer_number || `CUS-${item.id.slice(0, 4).toUpperCase()}`,
-      fullName: item.full_name,
-      phone: item.phone,
-      altPhone: item.alternate_phone,
-      email: item.email,
-      area: item.area_route || "Main Market Route",
-      city: item.city || "Madurai",
-      state: item.state || "Tamil Nadu",
-      pincode: item.pincode || "625001",
-      address: item.address,
-      idType: item.id_proof_type,
-      idNumber: item.id_proof_number,
-      activeLoansCount: 0,
-      totalOutstanding: 0,
-      portalEnabled: item.portal_access_enabled ?? true,
-      preferredLang: item.preferred_language || "ta",
-      status: item.is_active ? "active" : "inactive",
-      createdAt: item.created_at,
-    }));
-
-    // Merge remote with local items
-    const merged = [...remoteList];
-    for (const localItem of localList) {
-      if (!merged.some((m) => m.id === localItem.id || m.phone === localItem.phone)) {
-        merged.push(localItem);
-      }
-    }
-
-    return merged;
-  } catch (e) {
-    return localList;
+  if (error) {
+    console.error("Error fetching customers:", error.message);
+    return [];
   }
+
+  if (!data || data.length === 0) return [];
+
+  return data.map((item: any): CustomerData => ({
+    id: item.id,
+    customerNumber: item.customer_number || `CUS-${item.id.slice(0, 6).toUpperCase()}`,
+    fullName: item.full_name,
+    phone: item.phone,
+    altPhone: item.alt_phone,
+    email: item.email,
+    area: item.area || "N/A",
+    city: item.city || "N/A",
+    state: item.state,
+    pincode: item.pincode,
+    address: item.address,
+    idType: item.id_type,
+    idNumber: item.id_number,
+    activeLoansCount: 0,
+    totalOutstanding: 0,
+    portalEnabled: item.notify_sms ?? true,
+    preferredLang: item.preferred_lang || "en",
+    status: item.is_active ? "active" : "inactive",
+    notes: item.notes,
+    createdAt: item.created_at,
+  }));
 }
 
-// Create new customer
-export async function createCustomer(data: {
+/**
+ * Fetch a single customer by ID — verifies ownership via created_by = auth.uid()
+ */
+export async function fetchCustomerById(id: string): Promise<CustomerData | null> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("customers")
+    .select("*")
+    .eq("id", id)
+    .eq("created_by", user.id)
+    .single();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    customerNumber: data.customer_number || `CUS-${data.id.slice(0, 6).toUpperCase()}`,
+    fullName: data.full_name,
+    phone: data.phone,
+    altPhone: data.alt_phone,
+    email: data.email,
+    area: data.area || "N/A",
+    city: data.city || "N/A",
+    state: data.state,
+    pincode: data.pincode,
+    address: data.address,
+    idType: data.id_type,
+    idNumber: data.id_number,
+    activeLoansCount: 0,
+    totalOutstanding: 0,
+    portalEnabled: data.notify_sms ?? true,
+    preferredLang: data.preferred_lang || "en",
+    status: data.is_active ? "active" : "inactive",
+    notes: data.notes,
+    createdAt: data.created_at,
+  };
+}
+
+/**
+ * Create a new customer, scoped to the logged-in user.
+ * Sets created_by = auth.uid() so only this user can see it.
+ */
+export async function createCustomer(input: {
   fullName: string;
   phone: string;
   altPhone?: string;
@@ -201,60 +136,83 @@ export async function createCustomer(data: {
   enablePortal: boolean;
   preferredLang: "en" | "ta" | "hi";
 }): Promise<CustomerData> {
-  const localList = getLocalCustomers();
-  const nextNum = (localList.length + 1).toString().padStart(4, "0");
-  const customerNumber = `CUS-${nextNum}`;
-  const generatedId = `cus-${Date.now()}`;
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
-  const newCustomer: CustomerData = {
-    id: generatedId,
-    customerNumber,
-    fullName: data.fullName,
-    phone: data.phone.startsWith("+91") ? data.phone : `+91 ${data.phone}`,
-    altPhone: data.altPhone ? (data.altPhone.startsWith("+91") ? data.altPhone : `+91 ${data.altPhone}`) : undefined,
+  // Generate customer number
+  const { count } = await supabase
+    .from("customers")
+    .select("*", { count: "exact", head: true })
+    .eq("created_by", user.id);
+  const nextNum = ((count ?? 0) + 1).toString().padStart(4, "0");
+  const customerNumber = `CUS-${nextNum}`;
+
+  const phone = input.phone.startsWith("+91") ? input.phone : `+91 ${input.phone}`;
+  const altPhone = input.altPhone
+    ? input.altPhone.startsWith("+91") ? input.altPhone : `+91 ${input.altPhone}`
+    : null;
+
+  const { data, error } = await supabase
+    .from("customers")
+    .insert({
+      customer_number: customerNumber,
+      full_name: input.fullName,
+      phone,
+      alt_phone: altPhone,
+      email: input.email || null,
+      area: input.area,
+      city: input.city,
+      state: input.state,
+      pincode: input.pincode,
+      address: input.address || null,
+      id_type: input.idType || null,
+      id_number: input.idNumber || null,
+      notes: input.notes || null,
+      notify_sms: input.enablePortal,
+      preferred_lang: input.preferredLang,
+      is_active: true,
+      created_by: user.id,
+    })
+    .select()
+    .single();
+
+  if (error || !data) throw new Error(error?.message || "Failed to create customer");
+
+  return {
+    id: data.id,
+    customerNumber: data.customer_number,
+    fullName: data.full_name,
+    phone: data.phone,
+    altPhone: data.alt_phone,
     email: data.email,
     area: data.area,
     city: data.city,
     state: data.state,
     pincode: data.pincode,
     address: data.address,
-    idType: data.idType,
-    idNumber: data.idNumber,
+    idType: data.id_type,
+    idNumber: data.id_number,
     activeLoansCount: 0,
     totalOutstanding: 0,
-    portalEnabled: data.enablePortal,
-    preferredLang: data.preferredLang,
+    portalEnabled: data.notify_sms ?? true,
+    preferredLang: data.preferred_lang || "en",
     status: "active",
-    createdAt: new Date().toISOString(),
+    notes: data.notes,
+    createdAt: data.created_at,
   };
+}
 
-  // 1. Save to LocalStorage immediately so UI updates instantly
-  saveLocalCustomer(newCustomer);
+/**
+ * @deprecated Use fetchAllCustomers() instead. Kept for compatibility.
+ */
+export function getLocalCustomers(): CustomerData[] {
+  return [];
+}
 
-  // 2. Try inserting into Supabase
-  try {
-    const supabase = createClient();
-    await supabase.from("customers").insert({
-      customer_number: customerNumber,
-      full_name: data.fullName,
-      phone: newCustomer.phone,
-      alternate_phone: newCustomer.altPhone,
-      email: data.email || null,
-      area_route: data.area,
-      city: data.city,
-      state: data.state,
-      pincode: data.pincode,
-      address: data.address || null,
-      id_proof_type: data.idType,
-      id_proof_number: data.idNumber,
-      notes: data.notes,
-      portal_access_enabled: data.enablePortal,
-      preferred_language: data.preferredLang,
-      is_active: true,
-    });
-  } catch (err) {
-    console.warn("Could not insert to Supabase, local cache saved:", err);
-  }
-
-  return newCustomer;
+/**
+ * @deprecated No-op. Kept for compatibility.
+ */
+export function saveLocalCustomer(customer: CustomerData): CustomerData[] {
+  return [customer];
 }

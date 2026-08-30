@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -14,100 +14,13 @@ import {
   Search,
   Phone,
   MapPin,
-  HandCoins,
-  CreditCard,
   MessageSquare,
-  ChevronRight,
   Filter,
   Eye,
-  CheckCircle2,
   Smartphone,
+  Plus,
 } from "lucide-react";
 import { formatCurrencyShort, getWhatsAppShareUrl } from "@/lib/utils";
-
-interface Customer {
-  id: string;
-  customerNumber: string;
-  fullName: string;
-  phone: string;
-  area: string;
-  city: string;
-  activeLoansCount: number;
-  totalOutstanding: number;
-  portalEnabled: boolean;
-  preferredLang: "en" | "ta" | "hi";
-  status: "active" | "inactive";
-}
-
-const SAMPLE_CUSTOMERS: Customer[] = [
-  {
-    id: "cus-1",
-    customerNumber: "CUS-0001",
-    fullName: "K. Annadurai",
-    phone: "+91 98401 55678",
-    area: "Main Market Route",
-    city: "Madurai",
-    activeLoansCount: 1,
-    totalOutstanding: 14500,
-    portalEnabled: true,
-    preferredLang: "ta",
-    status: "active",
-  },
-  {
-    id: "cus-2",
-    customerNumber: "CUS-0002",
-    fullName: "S. Meenakshi",
-    phone: "+91 97109 88765",
-    area: "North Ward",
-    city: "Madurai",
-    activeLoansCount: 2,
-    totalOutstanding: 42000,
-    portalEnabled: true,
-    preferredLang: "ta",
-    status: "active",
-  },
-  {
-    id: "cus-3",
-    customerNumber: "CUS-0003",
-    fullName: "V. Thangaraj",
-    phone: "+91 94441 22334",
-    area: "Main Market Route",
-    city: "Madurai",
-    activeLoansCount: 1,
-    totalOutstanding: 8000,
-    portalEnabled: false,
-    preferredLang: "en",
-    status: "active",
-  },
-  {
-    id: "cus-4",
-    customerNumber: "CUS-0004",
-    fullName: "R. Balamurugan",
-    phone: "+91 98840 99887",
-    area: "South Town",
-    city: "Madurai",
-    activeLoansCount: 1,
-    totalOutstanding: 25000,
-    portalEnabled: true,
-    preferredLang: "ta",
-    status: "active",
-  },
-  {
-    id: "cus-5",
-    customerNumber: "CUS-0005",
-    fullName: "P. Rajesh Kumar",
-    phone: "+91 96001 44556",
-    area: "East Bazaar",
-    city: "Madurai",
-    activeLoansCount: 0,
-    totalOutstanding: 0,
-    portalEnabled: true,
-    preferredLang: "hi",
-    status: "inactive",
-  },
-];
-
-import { useEffect } from "react";
 import { fetchAllCustomers, CustomerData } from "@/lib/services/customerService";
 
 export default function CustomersPage() {
@@ -135,7 +48,10 @@ export default function CustomersPage() {
     load();
   }, []);
 
-  const areas = ["all", "Main Market Route", "North Ward", "South Town", "East Bazaar", "Industrial Area"];
+  const uniqueAreas = Array.from(
+    new Set(customers.map((c) => c.area).filter(Boolean))
+  );
+  const areas = ["all", ...uniqueAreas];
 
   const filteredCustomers = customers.filter((c) => {
     const matchesSearch =
@@ -146,10 +62,13 @@ export default function CustomersPage() {
     return matchesSearch && matchesArea;
   });
 
-  const totalOutstandingSum = customers.reduce((acc, c) => acc + c.totalOutstanding, 0);
+  const totalOutstandingSum = customers.reduce(
+    (acc, c) => acc + (c.totalOutstanding || 0),
+    0
+  );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -173,23 +92,33 @@ export default function CustomersPage() {
       {/* Overview Stat Counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">{t("dashboard.totalCustomers")}</p>
-          <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">{customers.length}</p>
-        </div>
-        <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">{t("dashboard.activeLoans")}</p>
-          <p className="text-xl sm:text-2xl font-bold text-primary mt-1">
-            {customers.reduce((acc, c) => acc + c.activeLoansCount, 0)}
+          <p className="text-xs text-muted-foreground font-medium">
+            {t("dashboard.totalCustomers")}
+          </p>
+          <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">
+            {customers.length}
           </p>
         </div>
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">{t("dashboard.outstandingAmount")}</p>
+          <p className="text-xs text-muted-foreground font-medium">
+            {t("dashboard.activeLoans")}
+          </p>
+          <p className="text-xl sm:text-2xl font-bold text-primary mt-1">
+            {customers.reduce((acc, c) => acc + (c.activeLoansCount || 0), 0)}
+          </p>
+        </div>
+        <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
+          <p className="text-xs text-muted-foreground font-medium">
+            {t("dashboard.outstandingAmount")}
+          </p>
           <p className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
             {formatCurrencyShort(totalOutstandingSum)}
           </p>
         </div>
         <div className="p-4 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm">
-          <p className="text-xs text-muted-foreground font-medium">{t("customers.portalEnabled")}</p>
+          <p className="text-xs text-muted-foreground font-medium">
+            {t("customers.portalEnabled")}
+          </p>
           <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
             {customers.filter((c) => c.portalEnabled).length}
           </p>
@@ -209,38 +138,61 @@ export default function CustomersPage() {
           />
         </div>
 
-        {/* Area Route Filter Dropdown (Vasool Drive Feature) */}
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-muted-foreground shrink-0 hidden sm:inline" />
-          <select
-            value={selectedArea}
-            onChange={(e) => setSelectedArea(e.target.value)}
-            className="h-11 rounded-lg border border-input bg-background px-3 py-2 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-ring w-full sm:w-56"
-          >
-            <option value="all">📍 {t("collections.allAreas")}</option>
-            {areas
-              .filter((a) => a !== "all")
-              .map((area) => (
-                <option key={area} value={area}>
-                  📍 {area}
-                </option>
-              ))}
-          </select>
-        </div>
+        {/* Area Route Filter Dropdown */}
+        {areas.length > 1 && (
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-muted-foreground shrink-0 hidden sm:inline" />
+            <select
+              value={selectedArea}
+              onChange={(e) => setSelectedArea(e.target.value)}
+              className="h-11 rounded-lg border border-input bg-background px-3 py-2 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-ring w-full sm:w-56"
+            >
+              <option value="all">📍 {t("collections.allAreas")}</option>
+              {areas
+                .filter((a) => a !== "all")
+                .map((area) => (
+                  <option key={area} value={area}>
+                    📍 {area}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Customer List Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredCustomers.length === 0 ? (
-          <div className="col-span-2 p-12 text-center border border-dashed border-border rounded-2xl bg-muted/20">
-            <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-60" />
-            <h3 className="font-semibold text-base text-foreground">No customers found</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Try adjusting your search query or area filter
-            </p>
+      {loading ? (
+        <div className="p-12 text-center border border-dashed border-border rounded-2xl bg-card/50">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
+          <p className="text-sm text-muted-foreground">Loading your customers...</p>
+        </div>
+      ) : customers.length === 0 ? (
+        <div className="p-12 text-center border border-dashed border-border rounded-2xl bg-muted/20 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4 text-primary">
+            <Users className="w-8 h-8 opacity-80" />
           </div>
-        ) : (
-          filteredCustomers.map((customer) => (
+          <h3 className="font-bold text-lg text-foreground">No customers yet</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+            Create your first customer to start disbursing loans and tracking daily/weekly collections.
+          </p>
+          <Link href={`/${locale}/customers/new`} className="mt-5">
+            <Button size="lg" className="gap-2">
+              <Plus className="w-4 h-4" />
+              Create Customer
+            </Button>
+          </Link>
+        </div>
+      ) : filteredCustomers.length === 0 ? (
+        <div className="p-12 text-center border border-dashed border-border rounded-2xl bg-muted/20">
+          <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+          <h3 className="font-semibold text-base text-foreground">No matching customers</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Try adjusting your search query or area filter
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredCustomers.map((customer) => (
             <div
               key={customer.id}
               className="rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm p-5 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between gap-4"
@@ -272,10 +224,12 @@ export default function CustomersPage() {
                         <Phone className="w-3.5 h-3.5 text-primary" />
                         {customer.phone}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                        {customer.area}
-                      </span>
+                      {customer.area && customer.area !== "N/A" && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                          {customer.area}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -309,18 +263,17 @@ export default function CustomersPage() {
                 <div>
                   <span className="text-muted-foreground">Outstanding Balance:</span>
                   <p className="font-bold text-amber-600 dark:text-amber-400 mt-0.5">
-                    {formatCurrencyShort(customer.totalOutstanding)}
+                    {formatCurrencyShort(customer.totalOutstanding || 0)}
                   </p>
                 </div>
               </div>
 
               {/* Bottom Row: Actions */}
               <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                {/* 1-Click WhatsApp Reminder button */}
                 <a
                   href={getWhatsAppShareUrl(
                     customer.phone,
-                    `Hello ${customer.fullName}, this is a payment update from Sri Krishna Finance. Your current outstanding balance is ₹${customer.totalOutstanding}. Thank you.`
+                    `Hello ${customer.fullName}, this is a payment update from our finance office. Your current outstanding balance is ₹${customer.totalOutstanding || 0}. Thank you.`
                   )}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -334,15 +287,15 @@ export default function CustomersPage() {
                   <Link href={`/${locale}/customers/${customer.id}`}>
                     <Button variant="outline" size="sm" className="h-8 px-3 text-xs gap-1.5">
                       <Eye className="w-3.5 h-3.5" />
-                      View 360° History
+                      View Profile
                     </Button>
                   </Link>
                 </div>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
