@@ -39,19 +39,29 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Define public routes that don't require auth
+  // Pages that unauthenticated users can access
   const publicPaths = [
     "/login",
     "/signup",
     "/verify-otp",
     "/forgot-password",
-    "/customer/login",
-    "/customer/verify-otp",
-    "/auth/callback",
+    "/reset-password",
+    "/company-setup",
+    "/customer-login",
+    "/my-loans",
+    "/my-payments",
+    "/my-profile",
   ];
 
+  // Pages where logged-in users should be redirected away (to dashboard)
+  const loginOnlyPaths = ["/login", "/signup", "/customer-login"];
+
   const pathname = request.nextUrl.pathname;
-  
+
+  // Extract locale from path (e.g., /en/login -> en)
+  const localeMatch = pathname.match(/^\/(en|ta|hi)/);
+  const locale = localeMatch ? localeMatch[1] : "en";
+
   // Remove locale prefix for path matching (e.g., /en/login -> /login)
   const pathWithoutLocale = pathname.replace(/^\/(en|ta|hi)/, "") || "/";
 
@@ -59,15 +69,26 @@ export async function updateSession(request: NextRequest) {
     (path) => pathWithoutLocale === path || pathWithoutLocale.startsWith(path + "/")
   );
 
-  // Check if Supabase keys are still placeholders (Demo Mode enabled)
-  const isDemoMode =
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder");
+  const isLoginOnlyPath = loginOnlyPaths.some(
+    (path) => pathWithoutLocale === path || pathWithoutLocale.startsWith(path + "/")
+  );
 
-  // In production with real Supabase keys, enforce login for protected routes
-  if (!isDemoMode && !user && !isPublicPath && pathWithoutLocale !== "/") {
+  // API routes and auth callback are always public
+  if (pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
+
+  // If logged in and on a login/signup page, redirect to dashboard
+  if (user && isLoginOnlyPath) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = `/${locale}/dashboard`;
+    return NextResponse.redirect(url);
+  }
+
+  // If NOT logged in and on a protected page, redirect to login
+  if (!user && !isPublicPath && pathWithoutLocale !== "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = `/${locale}/login`;
     return NextResponse.redirect(url);
   }
 
