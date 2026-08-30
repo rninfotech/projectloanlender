@@ -63,7 +63,7 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const { error: authError } = await supabase.auth.signUp({
+      const { data, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -72,12 +72,18 @@ export default function SignupPage() {
             phone: phone ? `+91${phone}` : undefined,
             user_type: "staff",
           },
-          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/${locale}/onboarding/company-setup`,
+          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/${locale}/company-setup`,
         },
       });
 
       if (authError) {
         setError(authError.message);
+        return;
+      }
+
+      // If Supabase has email confirmation disabled, user is logged in immediately
+      if (data?.session) {
+        router.push(`/${locale}/company-setup`);
         return;
       }
 
@@ -97,7 +103,7 @@ export default function SignupPage() {
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback?next=/${locale}/onboarding/company-setup`,
+          redirectTo: `${window.location.origin}/api/auth/callback?next=/${locale}/company-setup`,
         },
       });
 

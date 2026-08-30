@@ -348,7 +348,11 @@ BEGIN
     COALESCE(new.raw_user_meta_data->>'full_name', 'User'),
     new.raw_user_meta_data->>'phone',
     COALESCE(new.raw_user_meta_data->>'user_type', 'staff')
-  );
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    full_name = EXCLUDED.full_name,
+    phone = EXCLUDED.phone,
+    user_type = EXCLUDED.user_type;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
