@@ -7,14 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Landmark, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle } from "lucide-react";
 
 export default function SignupPage() {
@@ -46,7 +39,6 @@ export default function SignupPage() {
     }
 
     setLoading(true);
-
     try {
       const { data, error: authError } = await supabase.auth.signUp({
         email,
@@ -61,13 +53,13 @@ export default function SignupPage() {
         return;
       }
 
-      // If email confirmation is OFF in Supabase, session is created immediately
+      // If session exists immediately (email confirm OFF), go to dashboard
       if (data?.session) {
         router.replace(`/${locale}/dashboard`);
         return;
       }
 
-      // Account created but email confirmation is ON — show success + go to login
+      // Otherwise show success and ask them to login
       setDone(true);
     } catch {
       setError("Something went wrong. Please try again.");
@@ -84,12 +76,13 @@ export default function SignupPage() {
             <CheckCircle className="w-8 h-8 text-green-500" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Account Created!</h1>
-          <p className="text-sm text-muted-foreground mt-1 text-center">You can now login with your email and password</p>
+          <p className="text-sm text-muted-foreground mt-1">You can now login</p>
         </div>
         <Card className="shadow-xl border-0 bg-card/80 backdrop-blur-sm">
-          <CardContent className="pt-6 text-center">
-            <p className="text-muted-foreground mb-4">
-              Your account for <strong className="text-foreground">{email}</strong> has been created successfully.
+          <CardContent className="pt-6 text-center space-y-4">
+            <p className="text-muted-foreground">
+              Your account for <strong className="text-foreground">{email}</strong> has been created.
+              Go to login and enter your email and password.
             </p>
             <Link href={`/${locale}/login`}>
               <Button size="lg" className="w-full">Go to Login</Button>
@@ -107,13 +100,13 @@ export default function SignupPage() {
           <Landmark className="w-8 h-8 text-white" />
         </div>
         <h1 className="text-2xl font-bold tracking-tight">Create Account</h1>
-        <p className="text-sm text-muted-foreground mt-1">Register to manage your finance company</p>
+        <p className="text-sm text-muted-foreground mt-1">Register to get started</p>
       </div>
 
       <Card className="shadow-xl border-0 bg-card/80 backdrop-blur-sm">
         <CardHeader className="text-center pb-2">
           <CardTitle className="text-lg">Sign Up</CardTitle>
-          <CardDescription>Fill in your details to get started</CardDescription>
+          <CardDescription>Fill in your details below</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -125,83 +118,45 @@ export default function SignupPage() {
               </div>
             )}
 
-            {/* Full Name */}
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name *</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="fullName"
-                  type="text"
-                  placeholder="Ravi Kumar"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="pl-10"
-                  required
-                  autoComplete="name"
-                />
+                <Input id="fullName" type="text" placeholder="Ravi Kumar" value={fullName}
+                  onChange={(e) => setFullName(e.target.value)} className="pl-10" required autoComplete="name" autoFocus />
               </div>
             </div>
 
-            {/* Email */}
             <div className="space-y-2">
               <Label htmlFor="signup-email">Email Address *</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="signup-email"
-                  type="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  required
-                  autoComplete="email"
-                />
+                <Input id="signup-email" type="email" placeholder="name@company.com" value={email}
+                  onChange={(e) => setEmail(e.target.value)} className="pl-10" required autoComplete="email" />
               </div>
             </div>
 
-            {/* Password */}
             <div className="space-y-2">
-              <Label htmlFor="signup-password">Password *</Label>
+              <Label htmlFor="signup-password">Password * (min 6 chars)</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="signup-password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Minimum 6 characters"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 pr-10"
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
+                <Input id="signup-password" type={showPassword ? "text" : "password"} placeholder="Create a password"
+                  value={password} onChange={(e) => setPassword(e.target.value)}
+                  className="pl-10 pr-10" required minLength={6} autoComplete="new-password" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Confirm Password */}
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password *</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  placeholder="Re-enter your password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="pl-10"
-                  required
-                  autoComplete="new-password"
-                />
+                <Input id="confirmPassword" type="password" placeholder="Re-enter password"
+                  value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="pl-10" required autoComplete="new-password" />
               </div>
             </div>
 
@@ -222,11 +177,11 @@ export default function SignupPage() {
       </Card>
 
       <div className="flex items-center justify-center gap-4 mt-6">
-        <Link href={`/en/signup`} className={`text-xs transition-colors ${locale === "en" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}>English</Link>
+        <Link href="/en/signup" className={`text-xs ${locale === "en" ? "text-primary font-semibold" : "text-muted-foreground"}`}>English</Link>
         <span className="text-muted-foreground/40">•</span>
-        <Link href={`/ta/signup`} className={`text-xs transition-colors ${locale === "ta" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}>தமிழ்</Link>
+        <Link href="/ta/signup" className={`text-xs ${locale === "ta" ? "text-primary font-semibold" : "text-muted-foreground"}`}>தமிழ்</Link>
         <span className="text-muted-foreground/40">•</span>
-        <Link href={`/hi/signup`} className={`text-xs transition-colors ${locale === "hi" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}>हिंदी</Link>
+        <Link href="/hi/signup" className={`text-xs ${locale === "hi" ? "text-primary font-semibold" : "text-muted-foreground"}`}>हिंदी</Link>
       </div>
     </>
   );
