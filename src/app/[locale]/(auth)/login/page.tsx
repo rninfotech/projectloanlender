@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import {
   Phone,
   Eye,
   EyeOff,
+  AlertCircle,
 } from "lucide-react";
 
 type AuthMode = "email" | "phone";
@@ -34,6 +35,7 @@ export default function LoginPage() {
   const t = useTranslations();
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const locale = params.locale as string;
   const supabase = createClient();
 
@@ -44,6 +46,25 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Show error from query param (e.g., auth_failed from callback)
+  useEffect(() => {
+    const err = searchParams.get("error");
+    if (err === "auth_failed") {
+      setError("Authentication failed. Please try again.");
+    }
+  }, [searchParams]);
+
+  // Check if user is already logged in and redirect to dashboard
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.replace(`/${locale}/dashboard`);
+      }
+    };
+    checkSession();
+  }, []);
 
   // Email/Password Login
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -58,23 +79,13 @@ export default function LoginPage() {
       });
 
       if (authError) {
-        if (
-          authError.message?.includes("fetch") ||
-          authError.message?.includes("Failed") ||
-          process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("placeholder")
-        ) {
-          // If Supabase is still on placeholder keys, auto-login with demo mode
-          router.push(`/${locale}/dashboard`);
-          return;
-        }
         setError(authError.message);
         return;
       }
 
-      router.push(`/${locale}/dashboard`);
+      router.replace(`/${locale}/dashboard`);
     } catch {
-      // In demo mode or if Supabase keys aren't set yet, navigate directly to dashboard
-      router.push(`/${locale}/dashboard`);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -98,18 +109,7 @@ export default function LoginPage() {
         phone: formattedPhone,
       });
 
-      if (authError) {
-        // If it's a Twilio authentication error or demo/test environment, gracefully proceed to OTP verification
-        if (
-          authError.message?.includes("provider") ||
-          authError.message?.includes("Twilio") ||
-          authError.message?.includes("Authenticate") ||
-          authError.message?.includes("20003") ||
-          process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("placeholder")
-        ) {
-          router.push(`/${locale}/verify-otp?phone=${encodeURIComponent(formattedPhone)}&type=staff`);
-          return;
-        }
+      if (authError && !authError.message?.includes("Twilio") && !authError.message?.includes("20003")) {
         setError(authError.message);
         return;
       }
@@ -138,10 +138,10 @@ export default function LoginPage() {
 
       if (authError) {
         setError(authError.message);
+        setLoading(false);
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
@@ -172,7 +172,7 @@ export default function LoginPage() {
             size="lg"
             className="w-full relative gap-3"
             onClick={handleGoogleLogin}
-            loading={loading && mode === "email"}
+            loading={loading}
             id="google-login-btn"
           >
             <GoogleIcon className="w-5 h-5" />
@@ -211,8 +211,9 @@ export default function LoginPage() {
 
           {/* Error Message */}
           {error && (
-            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm animate-fade-in">
-              {error}
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm flex gap-2 items-start animate-fade-in">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -315,33 +316,18 @@ export default function LoginPage() {
             href={`/${locale}/customer-login`}
             className="text-xs text-muted-foreground hover:text-primary transition-colors"
           >
-            {t("auth.customerLogin")} →
+            {t("auth.customerLogin")} &rarr;
           </Link>
         </CardFooter>
       </Card>
 
       {/* Language Switcher */}
       <div className="flex items-center justify-center gap-4 mt-6">
-        <Link
-          href={`/en/login`}
-          className={`text-xs transition-colors ${locale === "en" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          English
-        </Link>
+        <Link href={`/en/login`} className={`text-xs transition-colors ${locale === "en" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}>English</Link>
         <span className="text-muted-foreground/40">•</span>
-        <Link
-          href={`/ta/login`}
-          className={`text-xs transition-colors ${locale === "ta" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          தமிழ்
-        </Link>
+        <Link href={`/ta/login`} className={`text-xs transition-colors ${locale === "ta" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}>தமிழ்</Link>
         <span className="text-muted-foreground/40">•</span>
-        <Link
-          href={`/hi/login`}
-          className={`text-xs transition-colors ${locale === "hi" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          हिंदी
-        </Link>
+        <Link href={`/hi/login`} className={`text-xs transition-colors ${locale === "hi" ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"}`}>हिंदी</Link>
       </div>
     </>
   );

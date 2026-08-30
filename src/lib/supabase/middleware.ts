@@ -33,13 +33,25 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: Do not use getSession() for authorization.
-  // Use getUser() which validates the token with Supabase Auth server.
+  // Always pass through API routes first
+  const pathname = request.nextUrl.pathname;
+  if (pathname.startsWith("/api/") || pathname.startsWith("/_next/")) {
+    return supabaseResponse;
+  }
+
+  // IMPORTANT: Use getUser() not getSession() for secure auth checks
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Pages that unauthenticated users can access
+  // Extract locale from path (e.g., /en/login -> en)
+  const localeMatch = pathname.match(/^\/(en|ta|hi)/);
+  const locale = localeMatch ? localeMatch[1] : "en";
+
+  // Remove locale prefix for path matching (e.g., /en/login -> /login)
+  const pathWithoutLocale = pathname.replace(/^\/(en|ta|hi)/, "") || "/";
+
+  // Pages that do NOT require login (unauthenticated users can visit)
   const publicPaths = [
     "/login",
     "/signup",
@@ -53,17 +65,8 @@ export async function updateSession(request: NextRequest) {
     "/my-profile",
   ];
 
-  // Pages where logged-in users should be redirected away (to dashboard)
+  // Pages that redirect already-logged-in users away (they should go to dashboard)
   const loginOnlyPaths = ["/login", "/signup", "/customer-login"];
-
-  const pathname = request.nextUrl.pathname;
-
-  // Extract locale from path (e.g., /en/login -> en)
-  const localeMatch = pathname.match(/^\/(en|ta|hi)/);
-  const locale = localeMatch ? localeMatch[1] : "en";
-
-  // Remove locale prefix for path matching (e.g., /en/login -> /login)
-  const pathWithoutLocale = pathname.replace(/^\/(en|ta|hi)/, "") || "/";
 
   const isPublicPath = publicPaths.some(
     (path) => pathWithoutLocale === path || pathWithoutLocale.startsWith(path + "/")
@@ -73,19 +76,14 @@ export async function updateSession(request: NextRequest) {
     (path) => pathWithoutLocale === path || pathWithoutLocale.startsWith(path + "/")
   );
 
-  // API routes and auth callback are always public
-  if (pathname.startsWith("/api/")) {
-    return supabaseResponse;
-  }
-
-  // If logged in and on a login/signup page, redirect to dashboard
+  // If user is logged in and tries to access login/signup -> redirect to dashboard
   if (user && isLoginOnlyPath) {
     const url = request.nextUrl.clone();
     url.pathname = `/${locale}/dashboard`;
     return NextResponse.redirect(url);
   }
 
-  // If NOT logged in and on a protected page, redirect to login
+  // If user is NOT logged in and tries to access a protected route -> redirect to login
   if (!user && !isPublicPath && pathWithoutLocale !== "/") {
     const url = request.nextUrl.clone();
     url.pathname = `/${locale}/login`;

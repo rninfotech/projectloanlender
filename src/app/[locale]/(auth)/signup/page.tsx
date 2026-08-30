@@ -27,6 +27,7 @@ import {
   Eye,
   EyeOff,
   CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 
 export default function SignupPage() {
@@ -72,7 +73,7 @@ export default function SignupPage() {
             phone: phone ? `+91${phone}` : undefined,
             user_type: "staff",
           },
-          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/${locale}/company-setup`,
+          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/${locale}/dashboard`,
         },
       });
 
@@ -81,12 +82,13 @@ export default function SignupPage() {
         return;
       }
 
-      // If Supabase has email confirmation disabled, user is logged in immediately
+      // Email confirmation is disabled — session is active immediately
       if (data?.session) {
-        router.push(`/${locale}/company-setup`);
+        router.replace(`/${locale}/dashboard`);
         return;
       }
 
+      // Email confirmation is enabled — show success message
       setSuccess(true);
     } catch {
       setError("An unexpected error occurred. Please try again.");
@@ -103,44 +105,52 @@ export default function SignupPage() {
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback?next=/${locale}/company-setup`,
+          redirectTo: `${window.location.origin}/api/auth/callback?next=/${locale}/dashboard`,
         },
       });
 
       if (authError) {
         setError(authError.message);
+        setLoading(false);
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
 
-  // Success state
+  // Success state — email confirmation required
   if (success) {
     return (
       <>
         <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-success/10 mb-4">
-            <CheckCircle className="w-8 h-8 text-success" />
+          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-green-500/10 mb-4">
+            <CheckCircle className="w-8 h-8 text-green-500" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Check your email</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Check your email!</h1>
+          <p className="text-sm text-muted-foreground mt-1">Almost there...</p>
         </div>
 
         <Card className="shadow-xl border-0 bg-card/80 backdrop-blur-sm">
-          <CardContent className="pt-6 text-center">
+          <CardContent className="pt-6 text-center space-y-4">
             <p className="text-muted-foreground">
-              We&apos;ve sent a verification link to <strong className="text-foreground">{email}</strong>.
-              Click the link in the email to activate your account.
+              We have sent a verification link to{" "}
+              <strong className="text-foreground">{email}</strong>.
+              Click the link in your email to activate your account and login.
             </p>
-            <p className="text-xs text-muted-foreground mt-4">
-              Didn&apos;t receive the email? Check your spam folder or try signing up again.
+            <p className="text-xs text-muted-foreground">
+              Did not receive it? Check your spam folder or{" "}
+              <button
+                className="text-primary underline"
+                onClick={() => { setSuccess(false); }}
+              >
+                try again
+              </button>.
             </p>
           </CardContent>
           <CardFooter className="justify-center">
             <Link href={`/${locale}/login`}>
-              <Button variant="outline">{t("auth.loginHere")}</Button>
+              <Button variant="outline">Go to Login</Button>
             </Link>
           </CardFooter>
         </Card>
@@ -185,8 +195,9 @@ export default function SignupPage() {
 
           {/* Error */}
           {error && (
-            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm animate-fade-in">
-              {error}
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm flex gap-2 items-start animate-fade-in">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -227,7 +238,7 @@ export default function SignupPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="signup-phone">{t("auth.phone")}</Label>
+              <Label htmlFor="signup-phone">{t("auth.phone")} (optional)</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
                   +91
